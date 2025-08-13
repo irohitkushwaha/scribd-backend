@@ -1,0 +1,27 @@
+{
+    "name": "scribd-downloader-backend",
+    "version": "1.0.0",
+    "description": "A backend service to download Scribd documents as PDF.",
+    "main": "app.js",
+    "type": "module",
+    "scripts": {
+        "start": "node app.js"
+    },
+    "keywords": [
+        "scribd",
+        "downloader",
+        "puppeteer",
+        "pdf"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2",
+        "pdfkit": "^0.13.0",
+        "puppeteer": "^21.5.2",
+        "puppeteer-extra": "^3.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "uuid": "^9.0.1"
+    }
+}
