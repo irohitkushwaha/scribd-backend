@@ -76,8 +76,8 @@ jobs:
             pm2 delete scribd-downloader-backend-service || true
 
             # Start new application instance
-            # IMPORTANT: Make sure 'api.js' is your actual entry file
-            pm2 start api.js --name scribd-downloader-backend-service
+            # IMPORTANT: Make sure 'app.js' is your actual entry file
+            pm2 start app.js --name scribd-downloader-backend-service
 
             # Save PM2 configuration to survive reboots
             pm2 save
