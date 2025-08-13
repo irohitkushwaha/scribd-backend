@@ -1,58 +1,90 @@
-- name: Deploy to DigitalOcean
-  run: |
-    set -e  # Exit on any error
-    
-    # Compress backend files for faster transfer
-    tar -czf ../scribd-downloader-backend.tar.gz .
-    
-    # Upload to server with connection options
-    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        ../scribd-downloader-backend.tar.gz \
-        ${{ secrets.DIGITALOCEAN_USER }}@${{ secrets.DIGITALOCEAN_HOST }}:/tmp/
-    
-    # Deploy commands executed on the remote server
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        ${{ secrets.DIGITALOCEAN_USER }}@${{ secrets.DIGITALOCEAN_HOST }} '
-      set -e  # Exit on any error within SSH session
-      
-      # Create deployment directory
-      mkdir -p /tmp/scribd-downloader-backend-deploy
-      
-      # Extract files
-      tar -xzf /tmp/scribd-downloader-backend.tar.gz -C /tmp/scribd-downloader-backend-deploy
-      
-      # Ensure target directory exists and clear previous deployment
-      sudo mkdir -p /var/www/scribd-downloader-backend
-      sudo rm -rf /var/www/scribd-downloader-backend/*
-      
-      # Copy new files
-      sudo cp -r /tmp/scribd-downloader-backend-deploy/* /var/www/scribd-downloader-backend/
-      
-      # Change ownership of the directory to the current user
-      sudo chown -R ${{ secrets.DIGITALOCEAN_USER }}:${{ secrets.DIGITALOCEAN_USER }} /var/www/scribd-downloader-backend
-      
-      # Change to application directory
-      cd /var/www/scribd-downloader-backend
-      
-      # Install production dependencies
-      npm ci --omit=dev
-      
-      # Stop and delete old PM2 process to ensure a clean start
-      pm2 delete scribd-downloader-backend-service || true
-      
-      # Start new application instance
-      pm2 start api.js --name scribd-downloader-backend-service
-      
-      # Save PM2 configuration to survive reboots
-      pm2 save
-      
-      # Verify deployment
-      sleep 3
-      pm2 status scribd-downloader-backend-service
-      
-      # Clean up temporary files on the server
-      rm -rf /tmp/scribd-downloader-backend-deploy
-      rm /tmp/scribd-downloader-backend.tar.gz
-      
-      echo "Deployment completed successfully!"
-    '
+name: Deploy scribd-downloader-backend
+
+on:
+  push:
+    branches: [ main ] # Change to your default branch if different
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOL
+          CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
+          PORT=${{ secrets.PORT }}
+          EOL
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DIGITALOCEAN_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DIGITALOCEAN_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to DigitalOcean
+        run: |
+          # Compress backend files for faster transfer
+          tar -czf ../scribd-downloader-backend.tar.gz .
+
+          # Upload to server
+          scp ../scribd-downloader-backend.tar.gz ${{ secrets.DIGITALOCEAN_USER }}@${{ secrets.DIGITALOCEAN_HOST }}:/tmp/
+
+          # Deploy
+          ssh ${{ secrets.DIGITALOCEAN_USER }}@${{ secrets.DIGITALOCEAN_HOST }} "
+            # Create deployment directory
+            mkdir -p /tmp/scribd-downloader-backend-deploy
+
+            # Extract files
+            tar -xzf /tmp/scribd-downloader-backend.tar.gz -C /tmp/scribd-downloader-backend-deploy
+
+            # Ensure target directory exists
+            sudo mkdir -p /var/www/scribd-downloader-backend
+
+            # Clear previous deployment
+            sudo rm -rf /var/www/scribd-downloader-backend/*
+
+            # Copy new files
+            sudo cp -r /tmp/scribd-downloader-backend-deploy/* /var/www/scribd-downloader-backend/
+
+            # ⭐ FIX: Set correct ownership for the application directory
+            # This allows the non-root user to run npm and pm2 commands
+            sudo chown -R ${{ secrets.DIGITALOCEAN_USER }}:${{ secrets.DIGITALOCEAN_USER }} /var/www/scribd-downloader-backend
+
+            # Set secure permissions for the .env file (now owned by the correct user)
+            sudo chmod 600 /var/www/scribd-downloader-backend/.env
+
+            # Change to application directory
+            cd /var/www/scribd-downloader-backend
+
+            # Install production dependencies
+            npm ci --production
+
+            # Stop existing application instance
+            pm2 stop scribd-downloader-backend-service || true
+            pm2 delete scribd-downloader-backend-service || true
+
+            # Start new application instance
+            # IMPORTANT: Make sure 'api.js' is your actual entry file
+            pm2 start api.js --name scribd-downloader-backend-service
+
+            # Save PM2 configuration to survive reboots
+            pm2 save
+
+            # Clean up
+            rm -rf /tmp/scribd-downloader-backend-deploy
+            rm /tmp/scribd-downloader-backend.tar.gz
+          "
+      - name: Deployment status
+        run: echo "Deployment completed successfully!"
